@@ -1,0 +1,93 @@
+mql5
+//+------------------------------------------------------------------+
+//|                                 Bawaba Grid Scalping              |
+//|                                 Developer: forexroboteasy.com     |
+//|                                 Development: Forex Robot Easy Team |
+//+------------------------------------------------------------------+
+
+// Define input parameters
+input double TakeProfit = 50; // Take profit level in points
+input double StopLoss = 20; // Stop loss level in points
+input double TrailingStop = 10; // Trailing stop level in points
+input bool DynamicLots = true; // Use dynamic lots or fixed lots
+input double FixedLotSize = 0.01; // Fixed lot size if DynamicLots is false
+
+// Define global variables
+int totalOrders = 0; // Total number of orders placed
+double gridStep = 10; // Grid step size in points
+double currentPrice = 0; // Current price of the currency pair
+
+//+------------------------------------------------------------------+
+//|                       OnInit function                            |
+//+------------------------------------------------------------------+
+void OnInit()
+{
+   // Set initial price
+   currentPrice = SymbolInfoDouble(Symbol(), SYMBOL_BID);
+   
+   // Calculate grid step size based on the price
+   gridStep = currentPrice / 100;
+   
+   // Calculate total number of orders for the grid
+   totalOrders = 2 * MathCeil(TakeProfit / gridStep);
+   
+   // Print grid parameters
+   Print('Grid Parameters:');
+   Print('Take Profit: ', TakeProfit, ' points');
+   Print('Stop Loss: ', StopLoss, ' points');
+   Print('Trailing Stop: ', TrailingStop, ' points');
+   Print('Grid Step: ', gridStep, ' points');
+   Print('Total Orders: ', totalOrders);
+}
+
+//+------------------------------------------------------------------+
+//|                OnTick function                                   |
+//+------------------------------------------------------------------+
+void OnTick()
+{
+   // Check if current price has moved in favor of the trade
+   if (PositionSelect(Symbol()))
+   {
+      // Check if trailing stop is enabled and adjust stop loss
+      if (TrailingStop > 0 && (PositionProfit() > TrailingStop * Point() || PositionProfit() > 0))
+      {
+         double newStopLoss = currentPrice - TrailingStop * Point();
+         if (newStopLoss > PositionGetDouble(POSITION_SL))
+            PositionModify(POSITION_SL, newStopLoss);
+      }
+   }
+   
+   // Check if the grid needs to be adjusted
+   if (MathAbs(currentPrice - SymbolInfoDouble(Symbol(), SYMBOL_BID)) >= gridStep)
+   {
+      // Calculate new grid levels
+      double upperLevel = currentPrice + gridStep;
+      double lowerLevel = currentPrice - gridStep;
+      
+      // Place new orders
+      for (int i = 0; i < totalOrders; i++)
+      {
+         if (i % 2 == 0)
+            OrderSend(Symbol(), OP_BUY, DynamicLots ? CalculateLotSize() : FixedLotSize, upperLevel, StopLoss, 0, 0, 'Buy Order', 0, 0, Green);
+         else
+            OrderSend(Symbol(), OP_SELL, DynamicLots ? CalculateLotSize() : FixedLotSize, lowerLevel, StopLoss, 0, 0, 'Sell Order', 0, 0, Red);
+      }
+      
+      // Update current price
+      currentPrice = SymbolInfoDouble(Symbol(), SYMBOL_BID);
+   }
+}
+
+//+------------------------------------------------------------------+
+//|                CalculateLotSize function                         |
+//+------------------------------------------------------------------+
+double CalculateLotSize()
+{
+   double accountBalance = AccountBalance();
+   double maxRisk = 0.02; // Maximum risk percentage
+   
+   // Calculate lot size based on account balance and maximum risk
+   double lotSize = accountBalance * maxRisk / (totalOrders * StopLoss * SymbolInfoDouble(Symbol(), SYMBOL_POINT));
+   
+   return NormalizeDouble(lotSize, 2);
+}
